@@ -35,6 +35,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OU
 DEALINGS IN THE SOFTWARE.
 #>
 
+
 function Test-Administrator()
 {
     [OutputType([bool])]
@@ -45,17 +46,53 @@ function Test-Administrator()
     }
 }
 
+function Enum-RemoteRegistry()
+{
+    Write-Host "`nEnumerating Remote Registry on Local Machine:"
+    $RemoteRegistryService = (Get-Service -Include "RemoteRegistry")
+    if($RemoteRegistryService | Where-Object {$_.Status -eq "Running"})
+    {
+        Write-Host "Service RemoteRegistry is currently Running in background."
+        Write-Host "Please check if PSRemoting is enabled."
+        Write-Host "Command: Enter-PSSession -ComputerName localhost`n"
+    }
+    else
+    {
+        Write-Host "Service RemoteRegistry is stopped.`n"
+    }
+}
+
 if(Test-Administrator)
 {
     $Hive = [Microsoft.Win32.RegistryHive]::LocalMachine
+    $Registry = "HKLM"
     $ComputerName = Get-WmiObject Win32_computersystem | Select-Object -ExpandProperty Name
     $OpenRegKeys = [Microsoft.Win32.RegistryKey]::OpenRemoteBaseKey($Hive, $ComputerName)
     $KeyPath = 'SYSTEM\CurrentControlSet\Control\Session Manager\KnownDLLs'
     $KeyValue = $OpenRegKeys.OpenSubKey($KeyPath)
     $RegValues = $KeyValue.GetValueNames()
 
+    Write-Host "`nCurrent Registry Path:" $Registry":\"$KeyPath
+
+    Write-Host "`nListing all registry key values:`n"
+
     foreach($KeyValueObject in $RegValues)
     {
         Write-Host $KeyValue.GetValue($KeyValueObject)
     }
+
+    $PropertyKeyPath = $Registry + ":\" + $KeyPath
+
+    Write-Host "`n`nEnumerating all registry keys and values:"
+    (Get-ItemProperty -Path $PropertyKeyPath -Name "*" | Out-String -Stream | ? { $_ -notmatch '^ps.+' })
+
+    Write-Host "Enumerating Security Permissions:"
+    Get-Acl -Path $PropertyKeyPath | Format-List -Expand Both
+
+    Enum-RemoteRegistry
+
+    Write-Host "Length:"$RegValues.Length"Registry Keys"
+    
+    # Get Specific Registry Key Value
+    Write-Host "Product Name:"(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').ProductName
 }
